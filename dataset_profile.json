@@ -1,0 +1,39 @@
+{
+  "dataset_id": "lerobot/pusht",
+  "total_episodes": 206,
+  "total_frames": 25650,
+  "fps": 10,
+  "episode_length": {
+    "min": 49,
+    "max": 246,
+    "mean": 124.51,
+    "std": 35.67,
+    "median": 122.0
+  },
+  "action_dim": 2,
+  "image_key": "observation.image",
+  "image_shape_chw": [
+    3,
+    96,
+    96
+  ],
+  "image_dtype": "torch.float32",
+  "image_value_range": [
+    0.2392,
+    1.0
+  ],
+  "available_features": [
+    "observation.image",
+    "observation.state",
+    "action",
+    "episode_index",
+    "frame_index",
+    "timestamp",
+    "next.reward",
+    "next.done",
+    "next.success",
+    "index",
+    "task_index"
+  ],
+  "success_rate": 0.0
+}
