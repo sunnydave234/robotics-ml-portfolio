@@ -3,6 +3,7 @@ import torch
 import argparse
 from pathlib import Path
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from config import DEFAULT_DATASET, profile_json_path, histogram_path
 
 
 def get_episode_lenghts(dataset: LeRobotDataset) -> torch.Tensor:
@@ -159,12 +160,9 @@ def save_histogram(lengths: torch.Tensor, output_path: Path) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Profile a LeRobot dataset.")
-    parser.add_argument("--dataset",   default="lerobot/pusht",
-                        help="HuggingFace dataset ID (default: lerobot/pusht)")
-    parser.add_argument("--output",    default="dataset_profile.json",
-                        help="Path for the JSON profile output")
-    parser.add_argument("--histogram", default="outputs/episode_length_hist.png",
-                        help="Path for the histogram PNG")
+    parser.add_argument("--dataset",   default=DEFAULT_DATASET)
+    parser.add_argument("--output",    default=str(profile_json_path()))
+    parser.add_argument("--histogram", default=str(histogram_path()))
     args = parser.parse_args()
 
     print(f"Loading {args.dataset}...")

@@ -4,6 +4,10 @@ import numpy as np
 from pathlib import Path
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from extract_episode import extract_episode
+from config import (
+    DEFAULT_DATASET, DEFAULT_FPS, DEFAULT_UPSCALE,
+    episode_video_path, OUTPUTS_DIR,
+)
 
 
 def tensor_to_bgr_frame(frame_tensor: torch.Tensor, upscale: int = 4) -> np.ndarray:
@@ -166,21 +170,15 @@ if __name__ == "__main__":
         "--output", type=str, default=None,
         help="Output MP4 path. Defaults to outputs/episode_<N>.mp4"
     )
-    parser.add_argument(
-        "--dataset", type=str, default="lerobot/pusht",
-        help="HuggingFace dataset repo ID (default: lerobot/pusht)"
-    )
-    parser.add_argument(
-        "--fps", type=int, default=10,
-        help="Playback frame rate (default: 10)"
-    )
-    parser.add_argument(
-        "--upscale", type=int, default=4,
-        help="Integer upscale factor for small source frames (default: 4, 96->384px)"
-    )
+    parser.add_argument("--dataset",  default=DEFAULT_DATASET)
+
+    parser.add_argument("--fps",      default=DEFAULT_FPS,     type=int)
+
+    parser.add_argument("--upscale",  default=DEFAULT_UPSCALE, type=int)
+
     args = parser.parse_args()
 
-    output = args.output or f"outputs/episode_{args.episode:03d}.mp4"
+    output = args.output or str(episode_video_path(args.episode))
 
     print(f"Loading {args.dataset}...")
     ds = LeRobotDataset(args.dataset)
