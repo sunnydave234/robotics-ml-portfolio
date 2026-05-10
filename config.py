@@ -16,15 +16,31 @@ PROJECT_ROOT = Path(__file__).parent.resolve()
 OUTPUTS_DIR = Path(os.environ.get("OUTPUTS_DIR", PROJECT_ROOT / "outputs"))
 CACHE_DIR   = Path(os.environ.get("CACHE_DIR", PROJECT_ROOT / ".cache"))
 
-# ── Dataset ──────────────────────────────────────────────────────────────────
+# ── Week 2: HDF5 storage ──────────────────────────────────────────────────────
+# One .hdf5 file per episode lands here after ingest.py runs.
+# Override with HDF5_DIR env var if you want files on a different drive.
+HDF5_DIR = Path(os.environ.get("HDF5_DIR", PROJECT_ROOT / "data" / "hdf5"))
+
+
+# ── Dataset ───────────────────────────────────────────────────────────────────
+# W1 kept this as DEFAULT_DATASET — W2 scripts import it as DATASET_NAME.
+# Both names point at the same value so neither set of scripts breaks.
 DEFAULT_DATASET = os.environ.get("LEROBOT_DATASET", "lerobot/pusht")
-DEFAULT_FPS     = int(os.environ.get("DEFAULT_FPS", "10"))
+DATASET_NAME    = DEFAULT_DATASET   # alias used by ingest.py and validate.py
+
+DEFAULT_FPS     = int(os.environ.get("DEFAULT_FPS",     "10"))
 DEFAULT_UPSCALE = int(os.environ.get("DEFAULT_UPSCALE", "4"))
 
 # ── Output file conventions ──────────────────────────────────────────────────
 def episode_video_path(episode_idx: int) -> Path:
-    """ Canonical path for a rendered episode MP4. """
-    return OUTPUTS_DIR / f"episode_{episode_idx:03d}.mp4"
+    """Canonical path for a rendered episode MP4 (used by visualize_episode.py)."""
+    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    return OUTPUTS_DIR / f"ep_{episode_idx:06d}.mp4"
+
+def episode_hdf5_path(episode_idx: int) -> Path:
+    """Canonical path for a written episode HDF5 (used by ingest.py and validate.py)."""
+    HDF5_DIR.mkdir(parents=True, exist_ok=True)
+    return HDF5_DIR / f"ep_{episode_idx:06d}.hdf5"
 
 def profile_json_path() -> Path:
     return OUTPUTS_DIR / "dataset_profile.json"

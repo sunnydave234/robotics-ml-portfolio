@@ -4,5 +4,5 @@ __pycache__/
 .DS_Store
 *.mp4
 *.pyc
-data/
+data/hdf5/*.hdf5
 .DS_Store

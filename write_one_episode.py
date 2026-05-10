@@ -1,56 +1,72 @@
 import h5py
-import numpy as np
-from pathlib import Path
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from extract_episode import extract_episode
+import torch
 
-DATA_DIR =  Path("data")
-
-def images_to_hwc_uint8(images: "torcch.Tensor") -> np.ndarray:
+def write_episode(
+    f: h5py.File,
+    episode_idx: int,
+    images: torch.Tensor,
+    actions: torch.Tensor,
+    success: float = 0.0,
+) -> None:
     """
-    Convert (T, C, H, W) float32 [0,1] -> (T, H, W, C) uint8 [0,255].
-    This is the single onversion boundry for image data.
+    Write one episode into an open HDF5 file following the W2D1 schema.
+
+    Resulting structure:
+    /
+    ├── observations/
+    │   ├── images (T, H, W, C)
+    │   └── state (T, state_dim)
+    └── actions (T, action_dim)
+    /[root attrs]   episode_id, task, frame-count, success
+
+    images: (T, C, H, W) float32 tensor, values in [0.0, 1.0]
+    actions: (T, A) float32 tensor
+    success: episode success label from source dataset (0.1 for pusht)
     """
-    # permute: (T, C, H, W) -> (T, H, W, C)
-    hwc = images.permute(0, 2, 3, 1)
-    # contiguous() required - permute breaks memory layout
-    hwc = hwc.contiguous()
-    # scale and cast, then to numpy
-    return (hwc * 255).byte().numpy()
 
+    T, C, H, W = images.shape
 
-def write_episode(ds: LeRobotDataset, episode_idx: int,out_dir: Path) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"ep_{episode_idx:06d}.hdf5"
+    # (T, C, H, W) float32 -> (T, H, W, C) uint8
+    # .permute() breaks memory contiguity, so .contiguous() is requried before .numpy()
+    frames = (images.permute(0, 2, 3, 1).contiguous() * 255).byte().numpy()
 
-    ep = extract_episode(ds, episode_idx)
+    # /observations/ group holds all sensor data, separate from actions
+    obs = f.create_group("observations")
 
-    images_uint8 = images_to_hwc_uint8(ep["images"])
-    actions_np = ep["actions"].numpy()
+    # chunks=(1, H, W, C): one chunk = one frame
+    # This means HDF5 can jump directly to any frame without reading the others
+    # compression_opts=4: mid-range gzip - good ratio withrout being CPU-heavy
+    obs.create_dataset(
+        "images",
+        data=frames,
+        chunks=(1, H, W, C),    # one chunk = one frame = one DataLoader read
+        compression="gzip",
+        compression_opts=4,
+    )
 
-    # LeRobot pusht has no state obs - use actions as a stand-in for shape
-    # In week 3 this slot will hold the agent_pos observation
-    state_np = ep["actions"].numpy()
+    # pusht has no true proprioceptive state — actions used as placeholder.
+    # Documented in schema. Replace if switching to a dataset with joint encoders.
+    obs.create_dataset(
+        'state',
+        data=actions.numpy(),
+        chunks=(1, actions.shape[1]),
+        compression='gzip',
+        compression_opts=4,
+    )    
 
-    with h5py.File(out_path, "w") as f:
-        # Groups
-        obs = f.create_group("observations")
+    # Actions stay float32 - no uint8, no precision loss
+    # Chunk on time axis to keep frame-aligned access consistent across both datasets
+    f.create_dataset(
+        'actions',
+        data=actions.numpy(),
+        chunks=(1, actions.shape[1]),
+        compression="gzip",
+        compression_opts=4,
+    )
 
-        # Datasets - no chucking or compression yet
-        obs.create_dataset("images", data=images_uint8)         # (T, 96, 96, 3) uint8
-        obs.create_dataset("state", data=state_np)              # (T, 2)         float32
-        f.create_dataset("actions", data=actions_np)            # (T, 2)         float32
-
-        # Episode-level attributes on the root group
-        f.attrs["episode_id"]   = episode_idx
-        f.attrs["task"]         = "pusht"
-        f.attrs["frame_count"]  = ep["length"]
-        f.attrs["success"]      = 0.0   # pusht sucess is sparse; always 0.0 at this stage
-
-    return out_path
-
-
-if __name__ == "__main__":
-    ds = LeRobotDataset("lerobot/pusht")
-    path = write_episode(ds,episode_idx=0, out_dir=DATA_DIR)
-    print(f"Written: {path}   ({path.stat().st_size / 1024:.1f} KB)")
+    # Root attributes - episode-level metadata
+    # query.py can read these without touching the image datasets.
+    f.attrs["episode_id"] = episode_idx
+    f.attrs["task"] = 'pusht'
+    f.attrs["frame_count"] = T
+    f.attrs["success"] = success
