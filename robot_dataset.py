@@ -1,7 +1,9 @@
+import json
 import numpy as np
 import pandas as pd
 import torch
 import h5py
+from config import OUTPUTS_DIR
 from torch.utils.data import Dataset
 
 
@@ -14,7 +16,7 @@ class RobotEpisodeDataset(Dataset):
     same pattern as Hive partition manifest.
     """
 
-    def __init__(self, parquet_path: str):
+    def __init__(self, parquet_path: str, normalize: bool = False):
         # Load the episode index built by build_index.py
         # Each row: episode_id, frame_count, file_path, success, task
         self.df = pd.read_parquet(parquet_path)
@@ -31,6 +33,30 @@ class RobotEpisodeDataset(Dataset):
 
         # Keep file paths as a plain list - fast index access in __getitem__
         self.file_paths = self.df["file_path"].tolist()
+
+        self.normalize = normalize
+        self._norm_stats = None
+
+        if normalize:
+            stats_path = OUTPUTS_DIR / "dataset_stats.json"
+
+            # Give a clear error if someone forgot to run compute_stats.py first
+            if not stats_path.exists():
+                raise FileNotFOundError(
+                    f"Stats file not found at {stats_path}. "
+                    "Run compute_stats.py first."
+                )
+            
+            with open(stats_path) as f:
+                raw = json.load(f)
+            
+            # Convert to tensors once here - not every time __getitem__ is called
+            self._norm_stats = {
+                "action_mean":  torch.tensor(raw["actions"]["mean"], dtype=torch.float32),
+                "action_std":   torch.tensor(raw["actions"]["std"], dtype=torch.float32),
+                "state_mean":   torch.tensor(raw["states"]["mean"], dtype=torch.float32),
+                "state_std":    torch.tensor(raw["states"]["std"], dtype=torch.float32),
+            }
 
     def __len__(self) -> int:
         return self.total_frames
@@ -64,6 +90,7 @@ class RobotEpisodeDataset(Dataset):
 
             # actions stored as (T, action_dim) float32
             action = f["actions"][frame_offset]                  # (action_dim,) float32
+            state = f["observations/state"][frame_offset]
 
         # ── Step 4: convert to tensors ─────────────────────────────────────────
         # Normalize image: uint8 [0, 255] → float32 [0.0, 1.0]
@@ -76,10 +103,19 @@ class RobotEpisodeDataset(Dataset):
         )
 
         action_tensor = torch.from_numpy(action.copy())  # (action_dim,) float32
+        state_tensor  = torch.from_numpy(state.copy())
 
+        # Apply normalization if the flag is set
+        if self.normalize and self._norm_stats is not None:
+            s = self._norm_stats
+            action_tensor = (action_tensor - s["action_mean"]) / (s["action_std"] + 1e-8)
+            state_tensor  = (state_tensor  - s["state_mean"])  / (s["state_std"]  + 1e-8)
+            # Note: 1e-8 is a tiny safety number to avoid dividing by zero
+        
         return {
             "image":      image_tensor,    # (C, H, W) float32
             "action":     action_tensor,   # (action_dim,) float32
+            "state":      state_tensor,
             "episode_idx": ep_idx,         # int — useful for debugging boundary cases
             "frame_offset": frame_offset,  # int — local position within episode
         }
