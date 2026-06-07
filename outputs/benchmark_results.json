@@ -1,0 +1,146 @@
+[
+  {
+    "num_workers": 0,
+    "pin_memory": false,
+    "batch_size": 16,
+    "median_samples_sec": 5306.9,
+    "min_samples_sec": 5306.9,
+    "max_samples_sec": 5306.9,
+    "p95_batch_time_ms": 3.0
+  },
+  {
+    "num_workers": 0,
+    "pin_memory": false,
+    "batch_size": 64,
+    "median_samples_sec": 5374.5,
+    "min_samples_sec": 5374.5,
+    "max_samples_sec": 5374.5,
+    "p95_batch_time_ms": 11.9
+  },
+  {
+    "num_workers": 0,
+    "pin_memory": true,
+    "batch_size": 16,
+    "median_samples_sec": 5331.3,
+    "min_samples_sec": 5331.3,
+    "max_samples_sec": 5331.3,
+    "p95_batch_time_ms": 3.0
+  },
+  {
+    "num_workers": 0,
+    "pin_memory": true,
+    "batch_size": 64,
+    "median_samples_sec": 5408.8,
+    "min_samples_sec": 5408.8,
+    "max_samples_sec": 5408.8,
+    "p95_batch_time_ms": 11.8
+  },
+  {
+    "num_workers": 2,
+    "pin_memory": false,
+    "batch_size": 16,
+    "median_samples_sec": 8463.7,
+    "min_samples_sec": 8463.7,
+    "max_samples_sec": 8463.7,
+    "p95_batch_time_ms": 1.9
+  },
+  {
+    "num_workers": 2,
+    "pin_memory": false,
+    "batch_size": 64,
+    "median_samples_sec": 9401.7,
+    "min_samples_sec": 9401.7,
+    "max_samples_sec": 9401.7,
+    "p95_batch_time_ms": 6.8
+  },
+  {
+    "num_workers": 2,
+    "pin_memory": true,
+    "batch_size": 16,
+    "median_samples_sec": 8292.1,
+    "min_samples_sec": 8292.1,
+    "max_samples_sec": 8292.1,
+    "p95_batch_time_ms": 1.9
+  },
+  {
+    "num_workers": 2,
+    "pin_memory": true,
+    "batch_size": 64,
+    "median_samples_sec": 9386.9,
+    "min_samples_sec": 9386.9,
+    "max_samples_sec": 9386.9,
+    "p95_batch_time_ms": 6.8
+  },
+  {
+    "num_workers": 4,
+    "pin_memory": false,
+    "batch_size": 16,
+    "median_samples_sec": 13997.8,
+    "min_samples_sec": 13997.8,
+    "max_samples_sec": 13997.8,
+    "p95_batch_time_ms": 1.1
+  },
+  {
+    "num_workers": 4,
+    "pin_memory": false,
+    "batch_size": 64,
+    "median_samples_sec": 15931.3,
+    "min_samples_sec": 15931.3,
+    "max_samples_sec": 15931.3,
+    "p95_batch_time_ms": 4.0
+  },
+  {
+    "num_workers": 4,
+    "pin_memory": true,
+    "batch_size": 16,
+    "median_samples_sec": 14037.4,
+    "min_samples_sec": 14037.4,
+    "max_samples_sec": 14037.4,
+    "p95_batch_time_ms": 1.1
+  },
+  {
+    "num_workers": 4,
+    "pin_memory": true,
+    "batch_size": 64,
+    "median_samples_sec": 15681.4,
+    "min_samples_sec": 15681.4,
+    "max_samples_sec": 15681.4,
+    "p95_batch_time_ms": 4.1
+  },
+  {
+    "num_workers": 8,
+    "pin_memory": false,
+    "batch_size": 16,
+    "median_samples_sec": 20973.0,
+    "min_samples_sec": 20973.0,
+    "max_samples_sec": 20973.0,
+    "p95_batch_time_ms": 0.8
+  },
+  {
+    "num_workers": 8,
+    "pin_memory": false,
+    "batch_size": 64,
+    "median_samples_sec": 25831.3,
+    "min_samples_sec": 25831.3,
+    "max_samples_sec": 25831.3,
+    "p95_batch_time_ms": 2.5
+  },
+  {
+    "num_workers": 8,
+    "pin_memory": true,
+    "batch_size": 16,
+    "median_samples_sec": 21019.1,
+    "min_samples_sec": 21019.1,
+    "max_samples_sec": 21019.1,
+    "p95_batch_time_ms": 0.8
+  },
+  {
+    "num_workers": 8,
+    "pin_memory": true,
+    "batch_size": 64,
+    "median_samples_sec": 25904.6,
+    "min_samples_sec": 25904.6,
+    "max_samples_sec": 25904.6,
+    "p95_batch_time_ms": 2.5
+  }
+]
