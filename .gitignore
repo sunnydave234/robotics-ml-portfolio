@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 data/hdf5/*.hdf5
 .DS_Store
+.DS_Store
