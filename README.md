@@ -143,3 +143,65 @@ LeRobot Dataset (HuggingFace)
 | `write_one_episode.py` | Single-episode write pattern (used in dev/testing) |
 | `config.py` | Central path config — all paths live here |
 | `run_pipeline.sh` | One-command pipeline runner |
+
+## PyTorch Dataset & DataLoader
+
+`RobotEpisodeDataset` is a flat-indexed `Dataset` over the per-episode HDF5
+files, addressed via `outputs/metadata.parquet`. Each item returns:
+
+- `image`: `(C, H, W)` float32 in `[0, 1]` — or `(K, H, W, C)` if `context_window > 1`
+- `action`: `(2,)` float32 — pusht's 2D end-effector target position
+- `state`: `(2,)` float32 — placeholder (pusht has no proprioceptive state)
+
+```python
+from torch.utils.data import DataLoader
+from robot_dataset import RobotEpisodeDataset
+from config import OUTPUTS_DIR
+
+# normalize=True applies z-score normalization to action/state using
+# stats from outputs/dataset_stats.json (compute_stats.py)
+dataset = RobotEpisodeDataset(OUTPUTS_DIR / "metadata.parquet", normalize=True)
+
+loader = DataLoader(
+    dataset,
+    batch_size=64,
+    num_workers=8,             # see benchmark table below
+    persistent_workers=True,
+    shuffle=True,
+)
+
+batch = next(iter(loader))
+print(batch["image"].shape)   # torch.Size([64, 3, 96, 96])
+print(batch["action"].shape)  # torch.Size([64, 2])
+
+# Temporal context window — returns (K, H, W, C), frame-0 padded at
+# episode boundaries
+ctx_dataset = RobotEpisodeDataset(
+    OUTPUTS_DIR / "metadata.parquet", normalize=False, context_window=3
+)
+print(ctx_dataset[0]["image"].shape)  # torch.Size([3, 96, 96, 3])
+```
+
+### DataLoader benchmark (25,650 samples, normalize=True)
+
+| num_workers | pin_memory | batch_size | samples/sec | p95 batch (ms) |
+|-------------|------------|------------|-------------|----------------|
+| 0 | False | 16 | 5,307 | 3.0 |
+| 0 | False | 64 | 5,375 | 11.9 |
+| 2 | False | 64 | 9,402 | 6.8 |
+| 4 | False | 64 | 15,931 | 4.0 |
+| **8** | **True** | **64** | **25,905** | **2.5** |
+
+`pin_memory` is a measured no-op on M4 unified memory (<1% difference).
+Bottleneck is HDF5 read + gzip decompression in worker subprocesses
+(93.7% of profiled CPU time, per `profile_dataloader.py`). At 56MB the
+dataset fits in the macOS page cache after the first pass — these numbers
+reflect RAM reads, not NVMe; expect this curve to flatten well before
+10,000 episodes.
+
+### Batch visualization
+
+![Batch visualization](outputs/batch_visualization.png)
+
+8 samples from the DataLoader (`normalize=False`), each with its raw
+`(x, y)` action vector plotted as a bar chart below.
