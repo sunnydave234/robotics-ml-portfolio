@@ -16,7 +16,7 @@ class RobotEpisodeDataset(Dataset):
     same pattern as Hive partition manifest.
     """
 
-    def __init__(self, parquet_path: str, normalize: bool = False):
+    def __init__(self, parquet_path: str, normalize: bool = False, context_window: int = 1):
         # Load the episode index built by build_index.py
         # Each row: episode_id, frame_count, file_path, success, task
         self.df = pd.read_parquet(parquet_path)
@@ -35,6 +35,9 @@ class RobotEpisodeDataset(Dataset):
         self.file_paths = self.df["file_path"].tolist()
 
         self.normalize = normalize
+        if context_window < 1:
+            raise ValueError(f"context_window must be >= 1, got {context_window}")
+        self.context_window = context_window
         self._norm_stats = None
 
         if normalize:
@@ -86,7 +89,27 @@ class RobotEpisodeDataset(Dataset):
         with h5py.File(self.file_paths[ep_idx], "r") as f:
             # images stored as (T, H, W, C) uint8 in [0, 255]
             # Read only the frame we need — HDF5 fetches one chunk (one frame)
-            raw_image = f["observations/images"][frame_offset]   # (H, W, C) uint8
+            if self.context_window == 1:
+                # images stored as (T, H, W, C) uint8 in [0, 255]
+                # Read only the frame we need — HDF5 fetches one chunk (one frame)
+                raw_image = f["observations/images"][frame_offset]   # (H, W, C) uint8
+            else:
+                K = self.context_window
+                start = frame_offset - K + 1
+                pad_count = max(0, -start)
+                start = max(start, 0)
+
+                # (window_len, H, W, C) uint8, window_len = K - pad_count
+                window = f["observations/images"][start:frame_offset + 1]
+
+                if pad_count > 0:
+                    # Repeat the earliest available frame to fill in the missing
+                    # leading context — keeps the window inside this episode,
+                    # never reaching into the previous one.
+                    pad = np.repeat(window[0:1], pad_count, axis=0)
+                    window = np.concatenate([pad, window], axis=0)
+
+                raw_image = window   # (K, H, W, C) uint8
 
             # actions stored as (T, action_dim) float32
             action = f["actions"][frame_offset]                  # (action_dim,) float32
@@ -95,12 +118,22 @@ class RobotEpisodeDataset(Dataset):
         # ── Step 4: convert to tensors ─────────────────────────────────────────
         # Normalize image: uint8 [0, 255] → float32 [0.0, 1.0]
         # PyTorch convention is channel-first (C, H, W), so permute.
-        image_tensor = (
-            torch.from_numpy(raw_image.copy())   # (H, W, C) uint8
-            .permute(2, 0, 1)                    # (C, H, W) uint8
-            .float()                             # (C, H, W) float32
-            .div(255.0)                          # (C, H, W) float32 in [0.0, 1.0]
-        )
+        if self.context_window == 1:
+            image_tensor = (
+                torch.from_numpy(raw_image.copy())   # (H, W, C) uint8
+                .permute(2, 0, 1)                    # (C, H, W) uint8
+                .float()                             # (C, H, W) float32
+                .div(255.0)                          # (C, H, W) float32 in [0.0, 1.0]
+            )
+        else:
+            # (K, H, W, C) uint8 -> (K, H, W, C) float32 [0.0, 1.0]
+            # No permute — matches HDF5 on-disk layout, and is the (K,H,W,C)
+            # shape manipulation policies expect for observation history.
+            image_tensor = (
+                torch.from_numpy(raw_image.copy())
+                .float()
+                .div(255.0)
+            )
 
         action_tensor = torch.from_numpy(action.copy())  # (action_dim,) float32
         state_tensor  = torch.from_numpy(state.copy())
@@ -113,9 +146,31 @@ class RobotEpisodeDataset(Dataset):
             # Note: 1e-8 is a tiny safety number to avoid dividing by zero
         
         return {
-            "image":      image_tensor,    # (C, H, W) float32
+            "image":      image_tensor,    # (C,H,W) if context_window==1, else (K,H,W,C)
             "action":     action_tensor,   # (action_dim,) float32
             "state":      state_tensor,
             "episode_idx": ep_idx,         # int — useful for debugging boundary cases
             "frame_offset": frame_offset,  # int — local position within episode
         }
+if __name__ == "__main__":
+    from config import OUTPUTS_DIR
+
+    parquet_path = OUTPUTS_DIR / "metadata.parquet"
+
+    # Default behavior, unchanged
+    ds = RobotEpisodeDataset(parquet_path)
+    print("context_window=1, idx=0 image shape:", ds[0]["image"].shape)  # (3, 96, 96)
+
+    # K=3 — check the boundary-padding case at the very start of an episode
+    ds_ctx = RobotEpisodeDataset(parquet_path, context_window=3)
+    sample0 = ds_ctx[0]
+    sample1 = ds_ctx[1]
+    print("context_window=3, idx=0 image shape:", sample0["image"].shape)  # (3, 96, 96, 3)
+    print("idx=0 frame_offset:", sample0["frame_offset"])  # 0 -> all 3 frames are frame 0
+    print("idx=1 frame_offset:", sample1["frame_offset"])  # 1 -> [frame0, frame0, frame1]
+
+    # Sanity check: at frame_offset=0, all K frames in the window should be identical
+    import torch
+    assert torch.equal(sample0["image"][0], sample0["image"][1])
+    assert torch.equal(sample0["image"][1], sample0["image"][2])
+    print("Boundary padding check: passed")
