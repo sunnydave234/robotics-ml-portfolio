@@ -47,3 +47,9 @@ def profile_json_path() -> Path:
 
 def histogram_path() -> Path:
     return OUTPUTS_DIR / "episode_length_hist.png"
+
+def checkpoint_path(name: str = "bc_mlp_best.pt") -> Path:
+    """ Canonical path for a saved model checkpoint. """
+    ckpt_dir = OUTPUTS_DIR / "checkpoints"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    return ckpt_dir / name
