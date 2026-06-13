@@ -1,0 +1,36 @@
+stages:
+  ingest:
+    cmd: python ingest.py
+    deps:
+      - ingest.py
+      - write_one_episode.py
+      - config.py
+    outs:
+      - data/hdf5
+  
+  validate:
+    cmd: python validate.py
+    deps:
+      - validate.py
+      - config.py
+      - data/hdf5
+    outs:
+      - outputs/validation_report.json
+    
+  build_index:
+    cmd: python build_index.py
+    deps:
+      - build_index.py
+      - config.py
+      - data/hdf5
+    outs:
+      - outputs/metadata.parquet
+  
+  compute_stats:
+    cmd: python compute_stats.py
+    deps:
+      - compute_stats.py
+      - config.py
+      - outputs/metadata.parquet
+    outs:
+      - outputs/dataset_stats.json
