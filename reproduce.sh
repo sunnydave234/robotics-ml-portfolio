@@ -29,8 +29,26 @@ fi
 
 # 1. Install dependencies
 echo ""
-echo "=== [1/5] Installing dependencies ==="
+echo "=== [1/5] Creating isolated virtual environment ==="
+
+VENV_DIR=".venv"
+
+if [ -d "$VENV_DIR" ]; then
+    echo "Existing .venv found — removing for clean reproduction"
+    rm -rf "$VENV_DIR"
+fi
+
+python3 -m venv "$VENV_DIR"
+
+# Activate it — everything after this point runs inside .venv
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+
+echo "Active Python: $(which python) — $(python --version)"
+
+pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
+echo "Dependencies installed into .venv (global env untouched)"
 
 # 2. W&B autentication
 # Skip in CI environment - set CI=true or WANDB_API_KEY in env instead.
