@@ -1,12 +1,28 @@
-h5py==3.16.0
+
+# ── Core ML ──────────────────────────────────────────────────────────────────
+torch==2.10.0
+torchvision==0.25.0
+ 
+# ── Robot data ────────────────────────────────────────────────────────────────
 lerobot==0.4.4
-numpy==2.2.6
-opencv-python==4.13.0.92
-opencv-python-headless==4.12.0.88
+h5py==3.16.0
+ 
+# ── Data layer ────────────────────────────────────────────────────────────────
 pandas==3.0.2
 pyarrow==23.0.1
+numpy==2.2.6
+ 
+# ── Experiment tracking + pipeline versioning ─────────────────────────────────
+wandb==0.24.2
+dvc==3.67.1
+ 
+# ── Visualization ─────────────────────────────────────────────────────────────
+matplotlib==3.10.8
+# headless only — no display required; avoids conflict with opencv-python
+opencv-python-headless==4.12.0.88
+ 
+# ── HuggingFace (LeRobotDataset triggers HF downloads; hf-cli login in setup) ─
+huggingface-hub==0.35.3
+ 
+# ── Dev / testing ─────────────────────────────────────────────────────────────
 pytest==9.0.3
-torch==2.10.0
-torchaudio==2.11.0
-torchcodec==0.10.0
-torchvision==0.25.0
