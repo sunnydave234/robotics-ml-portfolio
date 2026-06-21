@@ -239,4 +239,74 @@ learned a near-identity mapping. Confirms pipeline correctness, not model qualit
 pin_memory confirmed no-op (M4 unified memory). MPS backend confirmed working.
 
 ## Month 2 — robot-policy-lab *(not started)*
+### ★ LeRobot PR — fix(cameras): fix mypy type errors in cameras module
+**Date:** June 20, 2026 (during Month 2 preflight / Week 1)
+**PR:** https://github.com/huggingface/lerobot/pull/3839
+**Status:** Open, awaiting review
+
+#### Context
+While doing preflight for Month 2 — checking LeRobot's CLI and install extras —
+went looking for the LeRobot PR opportunity the roadmap had slotted for Week 4+.
+Found `#1724` ("Ensure the cameras module passes MyPy type checks"), closed by
+stale-bot in February with two prior unmerged attempts (`#1788`, `#2036`).
+Verified directly against current `main` rather than trusting the closed status:
+`mypy src/lerobot/cameras/` failed with 15 real errors. Decided to take it on
+immediately rather than wait for the planned Week 4 slot.
+
+#### What was wrong (root-caused, not guessed)
+- **`camera_zmq.py` / `image_server.py`** — `pyzmq`'s own `zmq/__init__.pyi`
+  re-exports its `sugar` submodule via a bare `from .sugar import *`, which
+  mypy can't statically expand into concrete names. Runtime `import zmq` works
+  fine (Python's real star-import resolves it); mypy's static analysis can't.
+  Confirmed via a minimal repro isolated from the project entirely.
+- **`camera_opencv.py`** — `cv2.VideoWriter_fourcc` is a real runtime
+  attribute with zero stub coverage in `opencv-python`'s `.pyi` files (verified
+  directly — no `.pyi` in the package even mentions it).
+- **`camera_opencv.py`** — also found a real (minor) logic bug along the way:
+  `self.fps` was being assigned the raw `float` return of
+  `cv2.VideoCapture.get()` while declared `int | None` — fixed with an
+  explicit `int()` cast, not just suppressed.
+- **Both files** — `width`/`height` inherited from `Camera.__init__` weren't
+  resolving across the subclass boundary in mypy's inference; fixed with
+  explicit class-level type annotations on both `ZMQCamera` and `OpenCVCamera`.
+
+#### Fix approach
+- `TYPE_CHECKING`-only import of `zmq.sugar.context.Context` /
+  `zmq.sugar.socket.Socket` for the two type annotations mypy couldn't
+  resolve through the broken re-export.
+- `# type: ignore[attr-defined]` with an explanatory comment (no bare
+  ignores, per the contributing guide) for the runtime `zmq.*` / `cv2.*`
+  attribute accesses with no valid typed alternative.
+- Discovered along the way: a pytest failure in `tests/cameras/` traced back
+  to Git LFS pointer files never being pulled in the local clone (fixture
+  PNGs were literal `version https://git-lfs...` text, not image data) —
+  unrelated to the PR itself, fixed locally with `git lfs install && git lfs pull`.
+
+#### Verification
+- `mypy src/lerobot/cameras/` (and via the project's actual `pre-commit`
+  mypy hook, which runs stricter than a standalone scoped call): clean,
+  0 errors, down from 15
+- `pytest tests/cameras/`: 39 passed, 3 skipped, 0 failed
+- Did a second pass cleaning up the `type: ignore` comments themselves
+  before merge — dropped a vague link that pointed at pyzmq's whole issues
+  list instead of anything specific, fixed one truncated comment
+
+#### Key things learned
+- A stale-closed GitHub issue is not the same as a resolved bug — always
+  verify against current `main` directly before trusting the tracker state
+- `pyzmq` and `opencv-python` both have real, verifiable gaps in their type
+  stubs despite working fine at runtime — `ignore_missing_imports = true`
+  in `pyproject.toml` doesn't cover attribute-level gaps on packages with
+  *partial* stub coverage, only packages with *no* stubs at all
+- Standalone `mypy <path>` and the project's real `pre-commit` mypy hook can
+  give different results — the hook is the source of truth, not a manual
+  scoped call, since it may enable stricter checks
+- Git LFS pointer files (plain text starting with `version https://git-lfs...`)
+  silently masquerade as the real binary file with the same extension —
+  `file <path>` is the fast way to tell the difference
+- Fork-based contribution workflow: `origin` = your fork (push target),
+  `upstream` = the real repo (pull updates from); a repo not existing yet
+  shows as "Repository not found" on push, not an auth error
+
+
 ## Month 3 — edge-policy *(not started)*
