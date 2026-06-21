@@ -23,3 +23,15 @@
   `av` package's bundled libavdevice.61 and Homebrew ffmpeg's libavdevice.62.
   Did not crash training; flagged as possible future instability source.
 - Week 2 contract: RobotForgeAdapter.__getitem__ must return action[t : t+n_action_steps].
+
+## W2D2 — Config system: draccus, not Hydra
+
+- Confirmed: draccus ChoiceRegistry entries (`PreTrainedConfig._choice_registry`)
+  are populated by decorator side-effect on import — `"act"` is NOT resolvable
+  until `lerobot.policies.act.configuration_act` (or equivalent) has been
+  imported somewhere in the process. lerobot-train's real entry point handles
+  this via `register_third_party_plugins()`; our debug script does it with a
+  direct import.
+- Settings file format is JSON (`--config_path=x.json`), not YAML/Hydra.
+  Precedence: file defaults < CLI flags, same order Hydra used.
+- No Hydra multirun equivalent in draccus — sweeps need a manual bash loop.
