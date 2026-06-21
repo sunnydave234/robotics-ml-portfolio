@@ -238,7 +238,7 @@ Key finding: val/loss near zero is expected — pusht writes actions into both
 learned a near-identity mapping. Confirms pipeline correctness, not model quality.
 pin_memory confirmed no-op (M4 unified memory). MPS backend confirmed working.
 
-## Month 2 — robot-policy-lab *(not started)*
+## Month 2 — robot-policy-lab
 ### ★ LeRobot PR — fix(cameras): fix mypy type errors in cameras module
 **Date:** June 20, 2026 (during Month 2 preflight / Week 1)
 **PR:** https://github.com/huggingface/lerobot/pull/3839
@@ -308,5 +308,59 @@ immediately rather than wait for the planned Week 4 slot.
   `upstream` = the real repo (pull updates from); a repo not existing yet
   shows as "Repository not found" on push, not an auth error
 
+### Week 1 — ACT training on MPS + config system + device verification
+
+#### W1D1 — Install from source + run unmodified train command + find n_action_steps (complete)
+**Completed:** June 21, 2026
+
+| File | Description |
+|---|---|
+| `PREFLIGHT.md` | Commit pin, config system findings, MPS baseline, Week 2 contract |
+
+- Cloned LeRobot from source, pinned commit `2d7a42011a4f8e05a8c85d5fb908da258d4cc7b1`
+- Plan was written against the old Hydra/YAML architecture (`lerobot/configs/*.yaml`,
+  `pip install -e ".[dev]"`) — corrected mid-session against actual `main`:
+  - Config system is now Python dataclasses (`ACTConfig`), not Hydra YAML — no `conf/` to `cat`
+  - Source layout is `src/lerobot/`, not `lerobot/`
+  - `lerobot-train` is the current CLI; `.[dev]` extra no longer exists
+- Python version drift: LeRobot `main` now requires `>=3.12` (Day 0 setup pinned 3.11.9).
+  Created new venv `~/envs/robotics-policy-lab` (Python 3.12.12, already available via
+  pyenv — no install needed). Month 1 env (`~/envs/robotics`, 3.11.9) untouched.
+- `pip install -e .` missing the `[training]` extra by default — `accelerate` not installed,
+  required `pip install -e ".[training]"`
+- `cfg.validate()` requires both `--dataset.repo_id` (training data source) AND
+  `--policy.repo_id` (hub push target) — two distinct, both-required fields, easy to conflate
+- Ran the unmodified `lerobot-train --policy.type=act --dataset.repo_id=lerobot/pusht
+  --policy.repo_id=<placeholder>` command. MPS was auto-detected
+  (`Device 'None' is not available. Switching to 'mps'`) — did **not** silently fall back
+  to CPU as the original plan assumed, and did **not** error on MPS either. Training ran
+  successfully: loss `6.595 → 0.397` over ~7.3K/100K steps, no MPS op errors. Stopped early
+  (proof-of-execution only, not a full run).
+- Found `n_action_steps` and `chunk_size` in `src/lerobot/policies/act/configuration_act.py`
+  (line 85-86, not a YAML file): both default to `100`. `__post_init__` validation
+  (line 138-146): `n_action_steps` must be `1` if temporal ensembling is enabled, and must
+  be `<= chunk_size`.
+
+#### Key things learned
+- A roadmap/plan doc can drift from upstream reality even within the same project —
+  verify against the actual repo (`web_fetch` the GitHub root, grep the real source file)
+  rather than trusting cached plan assumptions, same discipline as the LeRobot PR work
+- Two Python venvs, one pyenv install: a venv is permanently bound to the interpreter it
+  was created from — there's no in-place upgrade. New venv > new minor Python version,
+  every time. Old env stays untouched and keeps working.
+- ACT's CLI flags map 1:1 onto `ACTConfig` dataclass field names (`--policy.chunk_size=N`)
+  — no string-based YAML key matching, fully typed, overridable in Python directly without
+  any config-composition system
+- `lerobot-train` trains against `LeRobotDataset` fetched straight from the HF Hub by
+  default — Month 1's HDF5/Parquet pipeline is not yet wired in. `RobotForgeAdapter`
+  (Week 2) is the bridge: must replicate `LeRobotDataset`'s `__getitem__` contract,
+  specifically returning `action[t : t+n_action_steps]` slices, not single actions
+- MPS throughput baseline (`batch_size=8`, ACT, ResNet-18 backbone): ~202 samples/sec,
+  ~25 steps/sec, `updt_s` (gradient step) dominates over `data_s` (data loading) —
+  dataloader is not the bottleneck on MPS. Reference point for Week 3 DDP comparison.
+- Known non-blocking issue: `objc[...]: Class AVFFrameReceiver is implemented in both...`
+  — duplicate `libavdevice` symbols between the `av` package's bundled build and Homebrew
+  `ffmpeg`. Did not crash training; flagged in `PREFLIGHT.md` as a possible future
+  instability source, not yet resolved.
 
 ## Month 3 — edge-policy *(not started)*
