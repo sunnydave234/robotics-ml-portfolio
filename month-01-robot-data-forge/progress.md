@@ -185,12 +185,58 @@ RobotEpisodeDataset(
 
 ---
 
-### ⬜ Week 4 — DVC Pipeline + End-to-End Reproducibility
+### ✅ Week 4 — DVC Pipeline + End-to-End Reproducibility
 **Goal:** `dvc.yaml` (ingest → validate → build_index → compute_stats) + `reproduce.sh` + trivial MLP behavior-cloning baseline + polished README
 
-### ⬜ Week 4 — DVC Pipeline + End-to-End Reproducibility
+#### W4D1 — DVC init + track existing artifacts (complete)
+| File | Description |
+|---|---|
+| `.dvc/config` | Local remote `local_remote` → `/tmp/dvc-cache` (throwaway — proves mechanics only) |
+| `data/hdf5.dvc` | Pointer for HDF5 store (206 episodes) |
+| `outputs/metadata.parquet.dvc` | Pointer for Parquet index |
 
+- `dvc init` + `dvc remote add -d local_remote /tmp/dvc-cache`
+- Tracked `data/hdf5` and `outputs/metadata.parquet` with `dvc add` → `.dvc` pointers committed to Git, raw bytes auto-added to `.gitignore`
+- Lineage proven: `dvc push` → `rm -rf data/hdf5` + `rm outputs/metadata.parquet` → `dvc pull` restored 206 episodes byte-identical → `dvc status` clean
+- Kept small JSON stats (`dataset_stats.json`, `benchmark_results.json`) in Git, not DVC — text diffs well; only binary/large artifacts (Parquet, HDF5) go to DVC
+
+#### Key things learned
+- `.dvc` pointer = S3 object pointer; DVC remote = the bucket; MD5 hash = the content-addressable join key between Git pointer and remote bytes
+- `dvc add` auto-appends to `.gitignore` — but it's a no-op for files Git *already* tracks; `git rm --cached` first if so
+- Plan's `data/` / `metadata.parquet` shorthand ≠ actual paths: real layout is `data/hdf5` and `outputs/metadata.parquet`
+- macOS purges `/tmp` on reboot — fine for this throwaway remote, never for a real one
+
+### ✅ W4D2 — dvc.yaml pipeline + DAG
+- `dvc.yaml`: 4 stages — ingest, validate, build_index, compute_stats
+- DAG shape (verified via `dvc dag`): ingest → {validate, build_index}; build_index → compute_stats
+  - validate is a leaf (nothing downstream reads validation_report.json — by design)
+- Resolved two "output already tracked by SCM" conflicts: validation_report.json and
+  dataset_stats.json were plain git-tracked files from W2/W3; both `git rm --cached`'d
+  and are now DVC-managed pipeline outputs
+- `dvc repro` clean, `dvc.lock` committed
+- Remote is still /tmp/dvc-cache (W4D1 throwaway) — `dvc push` does nothing useful;
+  pipeline reproducibility (not dvc pull) is the safety net
+- Pending: cache-invalidation experiments (edit ingest.py vs edit build_index.py,
+  observe what reruns)
 ---
+
+### ✅ W4D3 — BC smoke test + W&B logging (complete)
+| File | Description |
+|---|---|
+| `model.py` | BCMLP: 3-layer MLP, input_dim=4 (state+prev_action), hidden=256, output_dim=2 |
+| `bc_dataset.py` | BCDataset: wraps RobotEpisodeDataset, adds prev_action with episode-boundary repeat-pad |
+| `train.py` | 10-epoch BC training loop, MSE loss, Adam, W&B logging, best-checkpoint artifact |
+
+W&B run: https://wandb.ai/sunnydave234-student/robot-data-forge/runs/c1o22yul
+
+Loss curve:
+- train/loss: drops sharply epoch 1 → near-zero by epoch 2, stays flat
+- val/loss: bottoms at 0.000010 by epoch 4, mild noise after (0.000093 final)
+
+Key finding: val/loss near zero is expected — pusht writes actions into both
+/observations/state and /actions, so model input contains the target. The MLP
+learned a near-identity mapping. Confirms pipeline correctness, not model quality.
+pin_memory confirmed no-op (M4 unified memory). MPS backend confirmed working.
 
 ## Month 2 — robot-policy-lab *(not started)*
 ## Month 3 — edge-policy *(not started)*

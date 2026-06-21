@@ -9,8 +9,8 @@ stages:
       size: 2807
     - path: ingest.py
       hash: md5
-      md5: ca91623e700613517e20a35d9834b9f9
-      size: 4369
+      md5: 7f894b0423a70aa28ed3755b73a9c391
+      size: 4386
     - path: write_one_episode.py
       hash: md5
       md5: d634926fb3fabcc331ca068445592ce4
@@ -47,8 +47,8 @@ stages:
     deps:
     - path: build_index.py
       hash: md5
-      md5: 742094bf78a4a35592e63c3a471a67d0
-      size: 2472
+      md5: 772eb3799b9c39ac94d29042d21cafaa
+      size: 2496
     - path: config.py
       hash: md5
       md5: 511bd15de58c937907333149e9a62f7b
@@ -61,8 +61,8 @@ stages:
     outs:
     - path: outputs/metadata.parquet
       hash: md5
-      md5: 3716a2e40a51a181ab665c3b682b79e5
-      size: 9446
+      md5: dc3eaf5a5e0ff0562d333cf43b818f3a
+      size: 9459
   compute_stats:
     cmd: python compute_stats.py
     deps:
@@ -76,8 +76,8 @@ stages:
       size: 2807
     - path: outputs/metadata.parquet
       hash: md5
-      md5: 3716a2e40a51a181ab665c3b682b79e5
-      size: 9446
+      md5: dc3eaf5a5e0ff0562d333cf43b818f3a
+      size: 9459
     outs:
     - path: outputs/dataset_stats.json
       hash: md5
