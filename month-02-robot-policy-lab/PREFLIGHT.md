@@ -49,7 +49,7 @@
   robot_policy_lab/__init__.py, robot_policy_lab/utils/ (empty, ready for
   device.py tomorrow). Committed: 457ca1a.
 
-## W1D3
+## W1D3 - Source path correction (carry into all future sessions)
 
 500-step smoke test: PASSED
 - Loss trajectory: 5.157 (step 200) → 2.140 (step 400) — clear decrease, correct
@@ -65,3 +65,8 @@ MPS vs CPU benchmark (100 steps, batch_size=64):
 Post-training 403 root cause: push_to_hub=True in config, HF token read-only.
 Fix: added push_to_hub=false + repo_id to conf/pusht_act.json permanently.
 libavdevice objc warning: non-blocking, already flagged W1D1, unchanged.
+
+- LeRobot source is at src/lerobot/, not lerobot/common/
+- Any plan referencing lerobot/common/policies/ or lerobot/common/datasets/
+  needs the prefix corrected to src/lerobot/policies/ and src/lerobot/datasets/
+- Applies to W1D4 plan: modeling_act.py is at src/lerobot/policies/act/modeling_act.py
