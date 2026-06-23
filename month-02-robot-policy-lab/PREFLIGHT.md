@@ -48,3 +48,20 @@
 - Files created W1D2: conf/pusht_act.json, scripts/train.py,
   robot_policy_lab/__init__.py, robot_policy_lab/utils/ (empty, ready for
   device.py tomorrow). Committed: 457ca1a.
+
+## W1D3
+
+500-step smoke test: PASSED
+- Loss trajectory: 5.157 (step 200) → 2.140 (step 400) — clear decrease, correct
+- Throughput (MPS, batch_size=64): ~6.4 steps/sec, ~374–411 smp/s
+- Note: steps/sec lower than W1D1 (~25) because batch_size=64 vs 8 — smp/s is the fair metric
+
+MPS vs CPU benchmark (100 steps, batch_size=64):
+- MPS:  23.95s wall → 6.40 steps/sec,  ~374 smp/s
+- CPU: 175.55s wall → 0.59 steps/sec,  ~38 smp/s
+- MPS speedup: 10.8× over CPU
+- Reference for Week 3: 4×T4 DDP target is >10× over this MPS baseline
+
+Post-training 403 root cause: push_to_hub=True in config, HF token read-only.
+Fix: added push_to_hub=false + repo_id to conf/pusht_act.json permanently.
+libavdevice objc warning: non-blocking, already flagged W1D1, unchanged.

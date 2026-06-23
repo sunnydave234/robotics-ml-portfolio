@@ -3,7 +3,9 @@
     "repo_id": "lerobot/pusht"
   },
   "policy": {
-    "type": "act"
+    "type": "act",
+    "push_to_hub": false,
+    "repo_id": "sunnydave234/act-pusht-w1d1"
   },
   "seed": 42,
   "batch_size": 64,
