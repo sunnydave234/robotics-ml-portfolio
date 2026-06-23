@@ -363,4 +363,28 @@ immediately rather than wait for the planned Week 4 slot.
   `ffmpeg`. Did not crash training; flagged in `PREFLIGHT.md` as a possible future
   instability source, not yet resolved.
 
+#### W1D2 — Config system: draccus + package structure (complete)
+**Completed:** June 21, 2026
+
+| File | Description |
+|---|---|
+| `conf/pusht_act.json` | draccus config file — dataset, policy type, seed, batch_size, steps, wandb settings |
+| `scripts/train.py` | Debug harness — loads config via draccus, prints resolved config dict, not a real training entry point |
+| `robot_policy_lab/__init__.py` | Package marker — makes robot_policy_lab importable for Week 2's RobotForgeDataset |
+| `robot_policy_lab/utils/` | Empty folder — ready for device.py (Day 3) and reproducibility.py (Day 5) |
+
+#### Key things learned
+- Plan drift: W1D2 was written against Hydra/YAML — corrected mid-session against actual pinned commit (`2d7a420`). Config system is draccus + JSON, not Hydra + YAML. No `conf/policy/act.yaml` tree, no `omegaconf`, no `hydra.main`.
+- draccus ChoiceRegistry: `"act"` is not resolvable until `lerobot.policies.act.configuration_act` has been imported — the `@register_subclass("act")` decorator only fires on import. Fixed with explicit import before `@draccus.wrap()` entry point. `lerobot-train`'s real entry point handles this via `register_third_party_plugins()`.
+- JSON config precedence: file defaults < CLI flags — same order Hydra had. `--config_path=conf/pusht_act.json` loads the file; any flag after it (e.g. `--seed=99`) overrides that field only. Verified live: seed changed from 42 → 99, batch_size from 64 → 32 in a single override run.
+- `TrainPipelineConfig` field names (confirmed from real source + live dump): `steps` (not `training.offline_steps`), `wandb.enable`, `batch_size`, `seed` — all flat top-level fields, not nested under a `training` block.
+- No top-level `device` field on `TrainPipelineConfig`. Device lives at `cfg.policy.device` — already auto-resolves to `'mps'` with zero code. Confirmed live in smoke-test output: `'device': 'mps'` in full config dump.
+- `device.py` design decision (Day 3 pre-decided): TWO functions, not one. `configure_mps_env()` sets env vars + global torch state (LeRobot doesn't set these). `get_device()` is a pure standalone resolver for code outside `TrainPipelineConfig`. Side effects must not be hidden inside a getter. `configure_mps_env()` must be called before draccus parses config.
+- Repo layout confirmed: real git repo is `~/robotics-ml-portfolio/robotics-ml-portfolio/` (doubled path from cloning inside same-named folder). Outer `~/robotics-ml-portfolio/` has no `.git` — leaving as-is, always `cd` two levels deep.
+
+#### Smoke test results
+- `python scripts/train.py --config_path=conf/pusht_act.json` → full resolved config dict printed, `'device': 'mps'` confirmed, all 16 policy types in registry including `'act'`
+- CLI override verified: `--seed=99 --batch_size=32` → `seed: 99`, `batch_size: 32` in output, JSON defaults (`42`, `64`) correctly overridden
+
+
 ## Month 3 — edge-policy *(not started)*
