@@ -70,3 +70,27 @@ libavdevice objc warning: non-blocking, already flagged W1D1, unchanged.
 - Any plan referencing lerobot/common/policies/ or lerobot/common/datasets/
   needs the prefix corrected to src/lerobot/policies/ and src/lerobot/datasets/
 - Applies to W1D4 plan: modeling_act.py is at src/lerobot/policies/act/modeling_act.py
+
+## W1D4 — Architecture contract (carry into all future sessions)
+- ARCHITECTURE.md committed — read it before any Week 2 adapter work
+- lerobot_train.py is the training entry point (not train.py)
+- action_is_pad is a required key in every __getitem__ return dict
+- Two eval modes: loss-only (is_eval_step) vs rollout (is_env_eval_step)
+## W1D5 — Reproducibility
+- seed_everything() confirmed working on MPS: identical loss curves across runs
+- robot_policy_lab package requires PYTHONPATH set to month-02-robot-policy-lab/ to resolve without install
+- Run tests as: PYTHONPATH=$(pwd) python tests/test_reproducibility.py from month-02-robot-policy-lab/
+
+## W2D1 — RobotForgeAdapter (carry into all future sessions)
+
+- `h5py`, `pandas`, `pyarrow` must be installed in `robotics-policy-lab` env — not just Month-1 env.
+  Always activate `~/envs/robotics-policy-lab` before running any Month-2 code.
+- HDF5 path rewrite in adapter `__init__`: parquet stores shallow paths (missing one `robotics-ml-portfolio/`
+  segment). Rewrite applied at load time via `str.replace`. Existence check on `file_paths[0]` in `__init__`
+  catches stale paths loudly before training starts.
+- Two HDF5 copies on disk — parquet correctly indexes `data/hdf5/`, not `data/` (early ingest artifact).
+- Stats keys: `dataset_stats.json["states"]["mean"]` and `["actions"]["mean"]` — plural, confirmed.
+- `action_is_pad` shape: `(n_action_steps,)` bool — required by loss fn at `lerobot_train.py:145`.
+- Run tests: `PYTHONPATH=$(pwd) python tests/test_adapter.py` from `month-02-robot-policy-lab/` root.
+- All 4 tests passing: schema, boundary padding, DataLoader multiprocessing (num_workers=2), total length.
+- Commit: `W2D1.1: RobotForgeAdapter — HDF5→ACT contract, action_is_pad, path rewrite, all tests pass`

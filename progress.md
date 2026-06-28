@@ -386,5 +386,88 @@ immediately rather than wait for the planned Week 4 slot.
 - `python scripts/train.py --config_path=conf/pusht_act.json` → full resolved config dict printed, `'device': 'mps'` confirmed, all 16 policy types in registry including `'act'`
 - CLI override verified: `--seed=99 --batch_size=32` → `seed: 99`, `batch_size: 32` in output, JSON defaults (`42`, `64`) correctly overridden
 
+#### W1D4 — ACT architecture + training loop annotation (complete)
+**Completed:** [today's date]
+
+| File | Description |
+|---|---|
+| `ARCHITECTURE.md` | ACT config, action shape contract, eval execution model, required dict keys, lerobot_train.py hook points, Week 2 checklist |
+
+Key things learned:
+- Training script is `lerobot_train.py` (not `train.py`) — entry point for all
+  future hook point work
+- Two eval modes: `is_eval_step` (loss on held-out split, no env) vs
+  `is_env_eval_step` (rollout in sim, returns pc_success + video)
+- Week 4 weighted loss path already exists: `policy.forward(batch, reduction="none")`
+  at line 121 — hard-example mining just needs to wire sample_weights in
+- `action_is_pad` is a required key — missing it = KeyError at training start
+  (loud failure, catches it early)
+- `accelerate` handles device detection, not LeRobot directly — explains why
+  MPS auto-detected in W1D1 without patching
+- `pin_memory=device.type=="cuda"` at line 460 — correctly False on MPS,
+  consistent with W3 benchmark finding that pin_memory is a no-op on M4
+
+#### W1D5 — seed_everything + reproducibility verification (complete)
+
+| File | Description |
+|---|---|
+| `robot_policy_lab/utils/reproducibility.py` | Seeds all RNG sources: Python random, NumPy, PyTorch, MPS, PYTHONHASHSEED |
+| `tests/test_reproducibility.py` | Runs 20-step training loop twice with seed=42, asserts identical loss curves |
+
+- Reproducible ✓ confirmed on MPS: loss range 0.074695 → 0.204569, device: mps
+- Two separate functions kept consistent with W1D3 design: `seed_everything()` is pure side-effect, no return value
+- `torch.mps.manual_seed()` (not `manual_seed_all`) — MPS-specific, confirmed working
+- `torch.use_deterministic_algorithms(True, warn_only=True)` — warns on non-deterministic MPS ops, does not error
+- Tests run from `month-02-robot-policy-lab/` root with `PYTHONPATH=$(pwd) python tests/test_reproducibility.py`
+- `seed_everything(cfg.seed)` wired into `scripts/train.py` as first call after `configure_mps_env()`
+- On Week 3 CUDA box: add `CUBLAS_WORKSPACE_CONFIG=:4096:8` env var for full determinism
+
+### Week 2 — RobotForgeAdapter + W&B + checkpoint-resume
+
+#### ✅ W2D1 — RobotForgeAdapter: HDF5 → ACT __getitem__ contract (complete)
+**Completed:** June 28, 2026
+
+| File | Description |
+|---|---|
+| `robot_policy_lab/datasets/__init__.py` | Package marker |
+| `robot_policy_lab/datasets/adapter.py` | RobotForgeAdapter — HDF5 → ACT sample dict translation layer |
+| `tests/test_adapter.py` | Schema, boundary padding, DataLoader multiprocessing, total length |
+
+Test results:
+test_schema ✓          image (3,96,96) float32, state (2,) float32, action (100,2) float32, action_is_pad (100,) bool
+
+test_episode_boundary ✓  last frame idx=160, padded steps=99/100
+
+test_dataloader_smoke ✓  batch action (8,100,2), num_workers=2 no h5py collision
+
+test_length ✓           25,650 total samples = sum of 206 episode frame_counts
+
+#### Key things learned
+- HDF5 path rewrite required at adapter load time: parquet stores paths from when `ingest.py` ran
+  (`~/robotics-ml-portfolio/month-01-robot-data-forge/...`) but real files are one level deeper in the
+  doubled-repo structure (`~/robotics-ml-portfolio/robotics-ml-portfolio/month-01-robot-data-forge/...`).
+  Fix: `str.replace("robotics-ml-portfolio/month-01-robot-data-forge", "robotics-ml-portfolio/robotics-ml-portfolio/month-01-robot-data-forge")`
+  applied to every file_path at load time. Existence check fires loudly in `__init__`, not silently inside `__getitem__`.
+- `h5py` and `pandas`/`pyarrow` must be installed in the `robotics-policy-lab` env (Python 3.12).
+  They were only in the Month-1 `robotics` env (Python 3.11). Fix: `pip install h5py pandas pyarrow`.
+- `action_is_pad` is required — `False` for real steps, `True` for repeat-padded steps past episode end.
+  Missing key = `KeyError` at `lerobot_train.py:145`. Not a silent failure, but caught in test before training.
+- Action chunk padding at episode boundary: `actions[frame_t : min(frame_t + n_action_steps, ep_len)]`
+  gives a short array near episode end — `np.tile(actions[-1], (pad_count, 1))` fills to `(n_action_steps, action_dim)`.
+- h5py file handles opened inside `__getitem__`, never `__init__` — multiprocessing DataLoader safety.
+  Confirmed: `num_workers=2` smoke test passes with no handle collision.
+- Stats key names verified: `dataset_stats.json` uses `"states"` and `"actions"` (plural) with nested `"mean"`/`"std"`.
+- pusht action values are raw pixel coordinates (~228, ~294 mean) not [0,1] — z-score normalization still correct,
+  output centers near 0 with ~unit variance.
+- image min is 0.239, not 0.0 — pusht background is not pure black. Range assertion uses `>= 0.0` not `== 0.0`.
+- Two HDF5 copies exist on disk: `data/ep_000000.hdf5` (early ingest run, before HDF5_DIR was configured)
+  and `data/hdf5/ep_000000.hdf5` (correct, what parquet indexes). Parquet correctly points to `data/hdf5/`.
+
+#### Known scalability limitation (documented, not fixed)
+Random HDF5 access at 100K+ episodes is a throughput bottleneck. Each `__getitem__` opens a file,
+seeks to one frame, closes. At 206 episodes / 56MB the dataset fits in page cache — not felt yet.
+At scale, production systems pre-shard into WebDataset `.tar` or Arrow files and stream sequentially.
+This adapter is correct for the portfolio; the limitation is named explicitly.
+
 
 ## Month 3 — edge-policy *(not started)*
