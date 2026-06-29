@@ -15,5 +15,8 @@
   "wandb": {
     "enable": true,
     "project": "robot-policy-lab"
-  }
+  },
+  "dataset_parquet_path": "../month-01-robot-data-forge/outputs/metadata.parquet",
+  "dataset_stats_path":   "../month-01-robot-data-forge/outputs/dataset_stats.json",
+  "dataset_dvc_path":     "../month-01-robot-data-forge/outputs/metadata.parquet"
 }
