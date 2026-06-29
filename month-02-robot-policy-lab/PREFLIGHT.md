@@ -94,3 +94,38 @@ libavdevice objc warning: non-blocking, already flagged W1D1, unchanged.
 - Run tests: `PYTHONPATH=$(pwd) python tests/test_adapter.py` from `month-02-robot-policy-lab/` root.
 - All 4 tests passing: schema, boundary padding, DataLoader multiprocessing (num_workers=2), total length.
 - Commit: `W2D1.1: RobotForgeAdapter — HDF5→ACT contract, action_is_pad, path rewrite, all tests pass`
+
+## W2D2 — Lineage utilities: pre-execution corrections (carry into next session)
+
+Plan was written against Hydra/OmegaConf — three things corrected before execution:
+
+- NO omegaconf. Config system is draccus + Python dataclasses (confirmed W1D2).
+  get_config_hash() uses dataclasses.asdict() + json.dumps(), not OmegaConf.to_yaml().
+- NO YAML config files. conf/ uses flat JSON (conf/pusht_act.json). No conf/dataset/
+  subfolder — that's Hydra config group syntax. Add dataset path fields directly to
+  conf/pusht_act.json.
+- NO ??? syntax. That's OmegaConf required-field syntax. Not valid in draccus JSON.
+- yaml package needed: get_dvc_dataset_hash() uses yaml.safe_load() to read .dvc pointer
+  files. Install if missing: pip install pyyaml
+- DVC pointer files confirmed from Month-1 W4D1:
+    ../month-01-robot-data-forge/data/hdf5.dvc
+    ../month-01-robot-data-forge/outputs/metadata.parquet.dvc
+  Pass path WITHOUT .dvc suffix to get_dvc_dataset_hash() — function appends it.
+  Use metadata.parquet path — that's what RobotForgeAdapter reads.
+- /tmp/dvc-cache (Month-1 DVC remote) may have been purged on reboot. If
+  get_dvc_dataset_hash() returns "unknown": run from month-01-robot-data-forge/:
+  dvc repro && dvc add outputs/metadata.parquet to regenerate the .dvc pointer file.
+
+## W2D2 — Lineage utilities (carry into all future sessions)
+
+- metadata.parquet is a dvc.yaml pipeline output (build_index stage) — NOT a
+  standalone dvc add artifact. No metadata.parquet.dvc file exists or should exist.
+- get_dvc_dataset_hash() reads from dvc.lock, not a .dvc pointer file.
+  Path arg is the full path to the file; function computes dvc_root as
+  tracked.parent.parent and searches all stages for the matching output path.
+- dvc.lock must stay committed to git — it's the source of truth for dataset MD5s.
+  If it goes stale: cd month-01-robot-data-forge && dvc repro && git add dvc.lock && git commit
+- Confirmed hashes (W2D2 run):
+    git:    1a42f14023d4cda484dc7ffc1474df6842b61bef
+    dvc:    4cb77b4b4ba3ac54e4edcb70b6d4aeba
+    config: 67c34877
