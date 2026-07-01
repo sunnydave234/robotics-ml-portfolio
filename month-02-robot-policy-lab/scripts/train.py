@@ -3,8 +3,11 @@ W2D2 smoke test - confirms draccus resolves conf/pusht_act.json + CLI
 overrides correctly. This does not replace lerobot-train - it's a debug
 harness so we can inspect the resolved config before trusting a real run.
 """
-from robot_policy_lab.utils.reproducibility import seed_everything
 import dataclasses
+
+from robot_policy_lab.utils.reproducibility import seed_everything
+from robot_policy_lab.utils.logging import init_wandb_run
+from robot_policy_lab.paths import DATASET_DVC_PATH
 
 # Importing this triggers ACTConfig's @register_subclass("act") decorator,
 # which is what makes --policy.type=act / "type": "act" resolvable at all.
@@ -15,12 +18,16 @@ from lerobot.configs.train import TrainPipelineConfig
 
 from robot_policy_lab.utils.device import configure_mps_env
 configure_mps_env()     # must run before draccus parses config and before any tensor creation
-seed_everything(cfg.seed)
 
 import draccus
 
+
 @draccus.wrap()
 def main(cfg: TrainPipelineConfig):
+    seed_everything(cfg.seed)
+
+    init_wandb_run(cfg, dvc_path=DATASET_DVC_PATH)
+
     print(dataclasses.asdict(cfg))
 
 
