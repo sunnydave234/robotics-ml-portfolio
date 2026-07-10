@@ -86,7 +86,7 @@ def load_checkpoint(
 
     model.load_state_dict(ckpt["model_state_dict"])
     optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-    if scheduler is not None and ckpt["shceduler_state_dict"] is not None:
+    if scheduler is not None and ckpt["scheduler_state_dict"] is not None:
         scheduler.load_state_dict(ckpt["scheduler_state_dict"])
     if restore_rng:
         _restore_rng_states(ckpt["rng_states"])
