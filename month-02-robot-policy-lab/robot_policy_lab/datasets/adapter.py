@@ -45,11 +45,13 @@ class RobotForgeAdapter(Dataset):
         # Parquet stores paths from when ingest.py ran — one level too shallow
         # because the git repo is doubled (robotics-ml-portfolio/robotics-ml-portfolio/).
         # Insert the missing segment so paths resolve to where the files actually are.
+        # Idempotent: only insert the missing segment if it isn't already
+        # present. Guards against re-doubling if build_index.py is ever
+        # re-run against paths that are already correct (as happened here).
+        SHALLOW = "robotics-ml-portfolio/month-01-robot-data-forge"
+        DOUBLED = "robotics-ml-portfolio/robotics-ml-portfolio/month-01-robot-data-forge"
         self.file_paths = [
-            p.replace(
-                "robotics-ml-portfolio/month-01-robot-data-forge",
-                "robotics-ml-portfolio/robotics-ml-portfolio/month-01-robot-data-forge",
-            )
+            p if DOUBLED in p else p.replace(SHALLOW, DOUBLED)
             for p in df["file_path"].tolist()
         ]
 
@@ -78,7 +80,45 @@ class RobotForgeAdapter(Dataset):
         self._s_std  = np.array(stats["states"]["std"],   dtype=np.float32) + 1e-8
         self._a_mean = np.array(stats["actions"]["mean"], dtype=np.float32)
         self._a_std  = np.array(stats["actions"]["std"],  dtype=np.float32) + 1e-8
-    
+
+    # --- LeRobotDataset-compatibility properties -----------------------------
+    # lerobot_train.py reads these directly off `dataset` (not dataset.meta) at
+    # several points — num_frames/num_episodes for logging (lines 395-396, 536,
+    # 696), episodes/absolute_to_relative_idx for building EpisodeAwareSampler
+    # (lines 413, 417). RobotForgeAdapter never needed these until the real
+    # training entry point was exercised end-to-end (W2D5).
+
+    @property
+    def num_frames(self) -> int:
+        """Total frame count across all episodes — matches len(self)."""
+        return len(self)
+
+    @property
+    def num_episodes(self) -> int:
+        """Episode count — one entry per row in metadata.parquet."""
+        return len(self.ep_lengths)
+
+    @property
+    def episodes(self):
+        """
+        None = use all episodes, no subsetting.
+        Confirmed against the real LeRobotDataset: it returns None here too
+        under the same conditions (no episode filter applied).
+        """
+        return None
+
+    @property
+    def absolute_to_relative_idx(self):
+        """
+        None = no distributed rank sharding.
+        Only populated on LeRobotDataset for the non-main-process path in
+        multi-GPU training (lerobot_train.py ~line 253) — not relevant on a
+        single Mac. NEEDS REVISITING in Week 3 once RobotForgeAdapter runs
+        under real DDP across multiple GPUs on the Terraform box.
+        """
+        return None
+    # --------------------------------------------------------------------------
+
     def __len__(self) -> int:
         return int(self._cumulative[-1])    # total frames across all episodes = 25, 650
     

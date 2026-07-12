@@ -469,5 +469,91 @@ seeks to one frame, closes. At 206 episodes / 56MB the dataset fits in page cach
 At scale, production systems pre-shard into WebDataset `.tar` or Arrow files and stream sequentially.
 This adapter is correct for the portfolio; the limitation is named explicitly.
 
+#### W2D2 — Lineage utilities (complete)
+| File | Description |
+|---|---|
+| `robot_policy_lab/utils/lineage.py` | get_git_hash(), get_dvc_dataset_hash(), get_config_hash() |
+| `tests/test_lineage.py` | All 3 lineage tests passing |
+
+- metadata.parquet is a dvc.yaml pipeline output — get_dvc_dataset_hash() reads
+  from dvc.lock (not a .dvc pointer file). Searches all stages for matching output path.
+- Confirmed hashes: git=1a42f14..., dvc=4cb77b4b4ba3ac54e4edcb70b6d4aeba, config=67c34877
+
+### 🚧 W2D3 — Production-grade W&B logging + draccus strict-schema correction (mostly complete)
+**Date:** June 30, 2026
+
+| File | Description |
+|---|---|
+| `robot_policy_lab/utils/logging.py` | `init_wandb_run()`, `get_device_profile()`, `log_train_step()`, `log_eval()`, `log_best_checkpoint()` — 7-field run reproducibility metadata |
+| `robot_policy_lab/paths.py` | New — custom Month-1 output paths (`DATASET_PARQUET_PATH`, `DATASET_STATS_PATH`, `DATASET_DVC_PATH`), env-var overridable. Moved here after the draccus strict-schema bug below |
+| `tests/test_wandb_logging.py` | `test_device_profile`, `test_init_wandb_run` — calls the real `init_wandb_run()` under `WANDB_MODE=disabled`, not a reimplementation of its logic |
+| `scripts/train.py` | `init_wandb_run()` wired in inside `main()`, right after `seed_everything(cfg.seed)`. Still the W1D2 config-resolution debug harness — no training loop yet |
+| `conf/pusht_act.json` | Reverted to LeRobot-native fields only — `eval_freq`, `dataset_parquet_path`, `dataset_stats_path`, `dataset_dvc_path` removed (see below) |
+
+Test results: `test_device_profile ✓`, `test_init_wandb_run ✓` — `git_hash`, `dataset_dvc_hash`, `config_hash`, `device_type` all populated.
+
+500-step live run: https://wandb.ai/sunnydave234-student/robot-policy-lab/runs/hr4fnmb8 (absurd-lake-1)
+
+`_meta` fields confirmed live in the W&B Config panel:
+```
+git_hash:         51d65e54c2cf218a8f734acf6d9791795aaef63a
+dataset_dvc_hash: 4cb77b4b4ba3ac54e4edcb70b6d4aeba
+config_hash:      892531ac
+device_type:      mps
+platform:         macOS-26.5.1-arm64-arm-64bit
+torch_version:    2.11.0
+```
+
+`dataset_dvc_hash` matches W2D2's confirmed hash (`4cb77b4b...`) exactly — same
+`metadata.parquet`, byte-identical, DVC lineage confirmed stable across sessions.
+`git_hash` and `config_hash` both differ from W2D2's values, and correctly so —
+more commits landed between W2D2 and this run (different `git_hash`), and this
+run's actual `cfg` (`--steps=500` override, live `TrainPipelineConfig`) has
+different content than whatever produced W2D2's `67c34877` (different
+`config_hash`). Same data, different code and config — the three hashes say
+so independently, which is the whole point of keeping them separate.
+
+`train/loss`, `eval/success_rate`, checkpoint artifact: **not verified** — `scripts/train.py` has no training loop, so nothing calls `log_train_step()` / `log_eval()` / `log_best_checkpoint()` yet. Deferred to whichever day wires in the real loop.
+
+#### Key things learned
+- **draccus is strict, not lenient — the real bug, bigger than the original attribute-access issue.** W2D2 assumed custom fields could be added directly to `conf/pusht_act.json` on the theory that unrecognized keys just wouldn't bind to `cfg`. Wrong: `draccus.wrap()` validates every top-level key in the JSON against `TrainPipelineConfig`'s declared fields and raises `DecodingError` on anything it doesn't recognize — confirmed live: `DecodingError: The fields eval_freq, dataset_parquet_path, dataset_stats_path, dataset_dvc_path are not valid for TrainPipelineConfig`. It doesn't silently drop unknown keys; it refuses to parse the file at all. Any custom, non-LeRobot config now lives in `robot_policy_lab/paths.py` (env-var overridable, same convention as Month 1's `config.py`), never in `conf/pusht_act.json`.
+- `cfg` only exists inside `draccus.wrap()`'s wrapped function, after draccus calls it — module-level code before the wrapped function can't reference it. Hit as `NameError: name 'cfg' is not defined`; fixed by moving `seed_everything()` and `init_wandb_run()` inside `main(cfg)`.
+- `init_wandb_run(cfg, *, dvc_path: str)` — `dvc_path` is an explicit keyword-only argument, not read off `cfg`. Dataset name is *not* a separate parameter — read straight from `cfg.dataset.repo_id`, which is a real, draccus-bound field, so the W&B tag can never drift out of sync with the dataset actually training.
+- No top-level `eval_freq` field ever existed on `TrainPipelineConfig` — confirmed via `dataclasses.fields(TrainPipelineConfig)`. Real fields: `env_eval_freq` (rollout/sim eval cadence, default `20000`) and `eval_steps` (held-out loss eval, currently `0`/off).
+- Test design matters: `test_init_wandb_run()` calls the real `init_wandb_run()` rather than reconstructing its `_meta` dict inline — a test that rebuilds the logic in parallel can't catch a bug *inside* the function under test.
+- `FakeCfg` in the test is deliberately shaped like the real `TrainPipelineConfig` (`dataset.repo_id`, `wandb.project`) with no `dataset_dvc_path`/`dataset_name` field — if `init_wandb_run()` ever regresses to reading those off `cfg`, the test fails loudly instead of silently passing.
+
+#### Known gap (documented, not fixed)
+`scripts/train.py` now wires in W&B logging correctly but still has no training loop — it's the W1D2 debug harness (parses config, prints the dict), not `lerobot-train`. `log_train_step()`, `log_eval()`, and `log_best_checkpoint()` are implemented and unit-tested in isolation but unverified end-to-end until a real training loop calls them. **Note for W2D4:** `save_checkpoint`, `save_freq`, `checkpoint_path`, `resume` are all real, native `TrainPipelineConfig` fields — LeRobot's own `lerobot_train.py` almost certainly already checkpoints model/optimizer/scheduler/step. Verify what it saves before writing a checkpoint function from scratch.
+
+### ✅ W2D5 — Real training integration: RobotForgeAdapter → lerobot_train.py (complete)
+**Date:** July 10–12, 2026
+
+| File | Description |
+|---|---|
+| `scripts/train_integration.py` | Monkeypatches `make_train_eval_datasets` via `unittest.mock.patch.object`, wires `RobotForgeAdapter` into the real `lerobot_train.train()` entry point, pushes `_meta` lineage fields into LeRobot's native W&B run |
+| `robot_policy_lab/datasets/adapter.py` | Added 4 `@property` methods (`num_frames`, `num_episodes`, `episodes`, `absolute_to_relative_idx`) for `LeRobotDataset` compatibility; fixed non-idempotent path-doubling bug in the HDF5 path rewrite |
+| `robot_policy_lab/utils/checkpoint.py` | Fixed typo: `load_checkpoint()` was reading `ckpt["shceduler_state_dict"]` instead of `ckpt["scheduler_state_dict"]` |
+
+**1000-step real integration run:** loss 4.262 → 0.712, 6.40 steps/sec (matches W1D3 MPS baseline exactly), checkpoints at step 500 and 1000, all 6 W&B `_meta` fields confirmed present, `dataset_dvc_hash` stable at `4cb77b4b4ba3ac54e4edcb70b6d4aeba`.
+
+**4-run hyperparameter sweep** (seed ∈ {42, 43} × lr ∈ {1e-4, 3e-4}, 200 steps each): confirmed correct seed and lr differentiation across three independent sources (config dump, training-loop log, W&B Config panel). Loss at 200 steps: lr=1e-4 → ~2.83–2.93, lr=3e-4 → ~5.06–5.33 — consistent across both seeds, a real (not noise) early signal that 3e-4 may be too aggressive for this setup.
+
+#### What was built
+Bridged `RobotForgeAdapter` (Month-1 HDF5 data) into LeRobot's actual `lerobot_train.py` training script end to end, for the first time — every prior Week 2 day tested the adapter, lineage utils, W&B logging, and checkpointing in isolation. This was the integration test, and it surfaced three real bugs that isolated unit tests couldn't have caught.
+
+The bridge: `unittest.mock.patch.object` swaps `make_train_eval_datasets` for the duration of the run. The patched version calls LeRobot's real function first (for a normal `eval_dataset` and, critically, the real dataset's `.meta` object), then substitutes `RobotForgeAdapter` as the training dataset before returning.
+
+#### Three bugs found, in order of discovery
+1. **5 missing `LeRobotDataset`-compatibility attributes** on `RobotForgeAdapter` (`.meta`, `.num_frames`, `.num_episodes`, `.episodes`, `.absolute_to_relative_idx`) — discovered one crash at a time by running real training against it. Fixed by reusing the original dataset's `.meta` directly (both datasets are the same underlying pusht data) and adding 4 new `@property` methods matching what the real `LeRobotDataset` returns under the same single-Mac, no-sharding conditions.
+2. **W&B `_meta` fields silently absent** — LeRobot's own native `WandBLogger` calls `wandb.init()` before our dataset patch ever runs, using its own plain config with no knowledge our custom `init_wandb_run()` (built and unit-tested back in W2D3) exists. Never crashed — undetected through an entire successful 1000-step run until manually checking the W&B Config panel. Fixed by pushing `_meta` into the already-live run via `wandb.config.update(..., allow_val_change=True)`.
+3. **`--optimizer.lr` CLI override silently discarded** — `TrainPipelineConfig.__post_init__` rebuilds `cfg.optimizer` from `cfg.policy.optimizer_lr` whenever `use_policy_training_preset=True` (the default), running *after* draccus applies CLI flags. Only caught because the sweep task explicitly required comparing `lr` values across runs — a single-run smoke test would never have revealed it. Correct flag: `--policy.optimizer_lr`.
+
+#### Key things learned
+- `grep` the full attribute contract of a class you're duck-typing against *before* writing the adapter, not one crash at a time after — `grep -n "dataset\.\w\+" file.py` returns the whole list in one pass.
+- A crash-free, loss-decreasing run is not proof everything is correct. Two of today's three bugs (missing `_meta`, discarded `lr` override) produced zero errors — they were only caught by deliberately checking the actual output (the W&B panel, the sweep's `lr` values) against what was expected, not by trusting a clean exit code.
+- Reusing a real, working object (`original_train_ds.meta`) instead of hand-building a stand-in sidesteps an entire category of subtle bugs (wrong dtype, missing keys, tensor-vs-list mismatches) that would otherwise need discovering one at a time.
+- `python -m py_compile` passing is not proof a heredoc-based edit landed completely — always re-view the actual file after a multi-line heredoc edit.
+- `@parser.wrap()` is LeRobot's own name for their draccus-based decorator — grepping literally for `"draccus"` can come back empty and be misleading.
 
 ## Month 3 — edge-policy *(not started)*
